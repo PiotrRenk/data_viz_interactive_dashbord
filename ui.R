@@ -101,6 +101,23 @@ shinyUI(fluidPage(
                  ),
                  plotOutput("track_features")
         ),
+        tabPanel("Genres",
+                 fluidRow(
+                   column(6,
+                          DT::dataTableOutput("genre_table")
+                   ),
+                   column(6,
+                          uiOutput("genre_details")
+                   )
+                 ),
+                 fluidRow(
+                   column(6,
+                          plotlyOutput("genre_selected_plot")
+                   )
+                 ),
+                 plotlyOutput("genre_feature_distribution"),
+                 plotlyOutput("genre_popularity", height = "500px")
+        ),
         tabPanel("Help",
                  h3("How to use this dashboard"),
                  tags$ul(

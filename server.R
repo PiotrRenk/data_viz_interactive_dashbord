@@ -64,6 +64,19 @@ shinyServer(function(input, output, session) {
       )
   })
   
+  # Extract genre list from artist data
+  observe({
+    genre_list <- artists %>%
+      mutate(genres = gsub("\\[|\\]|'", "", genres)) %>%
+      separate_rows(genres, sep = ",\\s*") %>%
+      filter(!is.na(genres), genres != "") %>%
+      distinct(genres) %>%
+      arrange(genres)
+    
+    updateSelectInput(session, "selected_genre",
+                      choices = genre_list$genres,
+                      selected = genre_list$genres[1])
+  })
   
   
   
@@ -95,6 +108,8 @@ shinyServer(function(input, output, session) {
       rownames = FALSE
     )
   })
+  
+  
   
   # Combined artist and track popularity plot
   output$artist_scatter <- renderPlotly({
@@ -325,4 +340,171 @@ shinyServer(function(input, output, session) {
       )
     }
   })
+  
+  tracks_with_genres <- reactive({
+    req(tracks, artists)
+    
+    tracks %>%
+      mutate(id_artists = gsub("\\[|\\]|'", "", id_artists)) %>%
+      separate_rows(id_artists, sep = ",\\s*") %>%
+      left_join(artists %>% select(id, genres), by = c("id_artists" = "id")) %>%
+      mutate(genres = gsub("\\[|\\]|'", "", genres)) %>%
+      separate_rows(genres, sep = ",\\s*") %>%
+      filter(!is.na(genres), genres != "")
+  })
+  
+  
+  genre_summary <- reactive({
+    tracks_with_genres() %>%
+      group_by(genres) %>%
+      summarise(
+        avg_popularity = mean(popularity, na.rm = TRUE),
+        track_count = n(),
+        .groups = "drop"
+      ) %>%
+      filter(track_count >= 10) %>%
+      arrange(desc(avg_popularity))
+  })
+  
+  genre_tracks <- reactive({
+    req(selected_genre())
+    tracks_with_genres() %>% filter(genres == selected_genre())
+  })
+  
+  
+  output$genre_table <- DT::renderDataTable({
+    datatable(
+      genre_summary(),
+      selection = 'single',
+      options = list(
+        pageLength = 10,
+        scrollX = TRUE
+      ),
+      rownames = FALSE
+    )
+  })
+  
+  selected_genre <- reactive({
+    s <- input$genre_table_rows_selected
+    if (length(s)) {
+      genre_summary()[s, "genres", drop = TRUE]
+    } else {
+      NULL
+    }
+  })
+  
+    output$genre_selected_plot <- renderPlotly({
+      df <- genre_tracks()
+      
+      validate(
+        need(nrow(df) > 0, "No tracks found for the selected genre.")
+      )
+      
+      summary_df <- df %>%
+        group_by(release_year) %>%
+        summarise(avg_popularity = mean(popularity, na.rm = TRUE), .groups = "drop")
+      
+      plot_ly(
+        data = summary_df,
+        x = ~release_year,
+        y = ~avg_popularity,
+        type = 'scatter',
+        mode = 'lines+markers'
+      ) %>%
+        layout(
+          title = paste("Popularity Over Time for Genre:", selected_genre()),
+          xaxis = list(title = "Year"),
+          yaxis = list(title = "Average Popularity"),
+          plot_bgcolor = "white",
+          paper_bgcolor = "white"
+        )
+      
+    })
+  
+  output$genre_details <- renderUI({
+    req(selected_genre())
+    genre_info <- genre_summary() %>% filter(genres == selected_genre())
+    
+    tagList(
+      h3(selected_genre()),
+      hr(),
+      p(strong("Average Popularity:"), round(genre_info$avg_popularity, 1)),
+      p(strong("Track Count:"), genre_info$track_count)
+    )
+  })
+  
+  output$genre_feature_distribution <- renderPlotly({
+    req(genre_tracks())
+    
+    df <- genre_tracks()
+    
+    # Select and reshape the relevant features
+    feature_df <- df %>%
+      select(danceability, energy, speechiness, acousticness, instrumentalness, liveness) %>%
+      pivot_longer(cols = everything(), names_to = "feature", values_to = "value")
+    
+    # Plotly boxplot for feature distributions
+    plot_ly(
+      data = feature_df,
+      x = ~feature,
+      y = ~value,
+      type = "box",
+      color = ~feature,
+      colors = "rgba(128, 0, 128, 0.7)"
+    ) %>%
+      layout(
+        title = paste("Audio Feature Distribution for Genre:", selected_genre()),
+        xaxis = list(title = ""),
+        yaxis = list(title = "Feature Value", range = c(0, 1)),
+        showlegend = FALSE,
+        plot_bgcolor = "white",
+        paper_bgcolor = "white"
+      )
+  })
+  
+  
+  output$genre_popularity <- renderPlotly({
+    req(filtered_tracks())
+    
+    track_data <- filtered_tracks() %>%
+      mutate(id_artists = gsub("\\[|\\]|'", "", id_artists)) %>%
+      separate_rows(id_artists, sep = ",\\s*") %>%
+      select(id_artists, track_popularity = popularity)
+    
+    genre_data <- track_data %>%
+      left_join(artists %>% select(id, genres), by = c("id_artists" = "id")) %>%
+      mutate(genres = gsub("\\[|\\]|'", "", genres)) %>%
+      separate_rows(genres, sep = ",\\s*") %>%
+      filter(!is.na(genres), genres != "") %>%
+      group_by(genres) %>%
+      summarise(avg_popularity = mean(track_popularity, na.rm = TRUE),
+                track_count = n(), .groups = "drop") %>%
+      filter(track_count >= 10) %>%
+      arrange(desc(avg_popularity)) %>%
+      slice_head(n = 20)
+    
+    validate(
+      need(nrow(genre_data) > 0, "No data to display")
+    )
+    
+    plot_ly(
+      data = genre_data,
+      x = ~reorder(genres, avg_popularity),
+      y = ~avg_popularity,
+      type = "bar",
+      text = ~paste("Tracks count:", track_count),
+      hoverinfo = "text+y",
+      marker = list(color = "rgba(128, 0, 128, 0.7)")
+    ) %>%
+      layout(
+        title = "Top 20 genres according to average track popularity",
+        xaxis = list(title = "Genre", tickangle = -45, showgrid = FALSE),
+        yaxis = list(title = "Average popularity", showgrid = FALSE),
+        margin = list(b = 100),
+        plot_bgcolor = "white",
+        paper_bgcolor = "white"
+      )
+  })
+  
+  
 })
