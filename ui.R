@@ -1,6 +1,9 @@
 library(shiny)
 library(shinydashboard)
-library(DT)  # Explicitly load DT package
+library(DT)
+library(plotly)
+
+
 
 shinyUI(fluidPage(
   titlePanel("Spotify Music Analysis Dashboard"),
@@ -34,6 +37,10 @@ shinyUI(fluidPage(
         color: #dc3545;
         padding: 10px;
       }
+      .download-btn {
+        margin-top: 10px;
+        margin-bottom: 20px;
+      }
     "))
   ),
   
@@ -65,26 +72,32 @@ shinyUI(fluidPage(
       h4("About"),
       p("This dashboard analyzes Spotify artist and track data."),
       p("Filter artists to see their tracks and audio features."),
-      p("Version: 1.0.3")  # Updated version number
+      p("Version: 1.0.3751")
     ),
     
     mainPanel(
       tabsetPanel(
         tabPanel("Artists",
                  fluidRow(
-                   column(8, DT::DTOutput("artist_table")),  # Explicit DT namespace
+                   column(8, DTOutput("artist_table")),
                    column(4, uiOutput("artist_details"))
                  ),
-                 plotOutput("artist_scatter")
+                 plotlyOutput("artist_scatter", height = "500px"),
+                 div(class = "download-btn",
+                     downloadButton("download_scatter", "Download Plot", 
+                                    class = "btn-primary")),
+                 h5("This visualization compares artist popularity with the average popularity of their tracks. 
+                    Point size represents follower count, while color indicates the number of tracks."),
+                 hr()
         ),
         tabPanel("Tracks",
                  fluidRow(
-                   column(8, DT::DTOutput("track_table")),  # Explicit DT namespace
+                   column(8, DTOutput("track_table")),
                    column(4, uiOutput("track_details"))
                  ),
                  fluidRow(
-                   column(6, plotOutput("popularity_trend")),
-                   column(6, plotOutput("duration_dist"))
+                   column(6, plotlyOutput("popularity_trend")),
+                   column(6, plotlyOutput("duration_dist"))
                  ),
                  plotOutput("track_features")
         ),
@@ -94,7 +107,8 @@ shinyUI(fluidPage(
                    tags$li("Use the filters in the sidebar to narrow down artists and tracks"),
                    tags$li("Click on an artist in the Artists tab to see their tracks"),
                    tags$li("Click on a track to see its audio features"),
-                   tags$li("Explore trends in the Tracks tab")
+                   tags$li("Explore trends in the Tracks tab"),
+                   tags$li("Download plots using the download buttons")
                  ),
                  hr(),
                  h3("Data Description"),
